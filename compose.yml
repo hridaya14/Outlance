@@ -1,0 +1,92 @@
+version: "3.9"
+
+services:
+
+  api:
+    build: .
+    container_name: cold-email-api
+    restart: always
+    ports:
+      - "${API_PORT}:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SCRAPER_URL: http://scraper:${SCRAPER_PORT}
+      ENVIRONMENT: ${ENVIRONMENT}
+    depends_on:
+      scraper:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag-network
+
+  scraper:
+    build: ./scraper
+    container_name: scraping-service
+    restart: always
+    ports:
+      - "${SCRAPER_PORT}:8001"
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      SCRAPER_ENV: ${ENVIRONMENT}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag-network
+
+  postgres:
+    image: postgres:15
+    container_name: postgres-db
+    restart: always
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag-network
+
+  adminer:
+    image: adminer:latest
+    container_name: adminer-ui
+    restart: always
+    ports:
+      - "${ADMINER_PORT}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - rag-network
+
+volumes:
+  postgres_data:
+  scraper_data:
+
+networks:
+  rag-network:
+    driver: bridge
+
